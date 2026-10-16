@@ -226,16 +226,16 @@ test("a pawn always steps one square, never two", () => {
   assert.equal(at(stepped[0]!, "p").file, 4);
 });
 
-test("only one pawn steps, the leftmost that can move", () => {
+test("every free pawn steps", () => {
   const state = hand([
     player("knight", 7, 0),
     piece({ id: "left", kind: "pawn", side: "black", file: 1, rank: 2, moved: true }),
     piece({ id: "right", kind: "pawn", side: "black", file: 4, rank: 2, moved: true }),
   ]);
   const frames = advancePawns(state, boom);
-  assert.equal(frames.length, 1);
-  assert.equal(at(frames[0]!, "left").rank, 3);
-  assert.equal(at(frames[0]!, "right").rank, 2);
+  assert.equal(frames.length, 2);
+  assert.equal(at(frames[1]!, "left").rank, 3);
+  assert.equal(at(frames[1]!, "right").rank, 3);
 });
 
 test("a blocked pawn stays, even when a forward diagonal is empty", () => {
@@ -354,7 +354,7 @@ test("the run ends when a pawn reaches rank 8, before the other pawn acts", () =
   assert.equal(at(frames[0]!, "late").rank, 1);
 });
 
-test("after a capture only one pawn steps, including a newborn", () => {
+test("after a capture the newborn steps with the other pawns", () => {
   const state = hand([
     player("bishop", 0, 0),
     piece({ id: "meal", kind: "pawn", side: "black", file: 1, rank: 1 }),
@@ -373,6 +373,47 @@ test("after a capture only one pawn steps, including a newborn", () => {
   assert.ok(pawn);
   assert.equal(pawn.rank, 2);
   assert.ok(n >= 1);
+});
+
+test("capturing a pawn when more than two are out does not replace it", () => {
+  const state = hand([
+    player("rook", 0, 1),
+    piece({ id: "meal", kind: "pawn", side: "black", file: 3, rank: 1 }),
+    piece({ id: "a", kind: "pawn", side: "black", file: 5, rank: 2, moved: true }),
+    piece({ id: "b", kind: "pawn", side: "black", file: 6, rank: 2, moved: true }),
+  ]);
+  const frames = playTurn(state, 3, 1, () => 0);
+  assert.ok(frames);
+  assert.equal(frames[0]!.score, 7);
+  assert.equal(frames[0]!.pieces.filter((p) => p.kind === "pawn").length, 2);
+  const last = frames[frames.length - 1]!;
+  assert.equal(last.pieces.filter((p) => p.kind === "pawn").length, 2);
+  assert.equal(at(last, "a").rank, 3);
+  assert.equal(at(last, "b").rank, 3);
+});
+
+test("capturing down to two stuck pawns still brings one in", () => {
+  const state = hand([
+    player("rook", 0, 1),
+    piece({ id: "meal", kind: "pawn", side: "black", file: 3, rank: 1 }),
+    piece({ id: "a", kind: "pawn", side: "black", file: 5, rank: 2, moved: true }),
+    piece({ id: "ba", kind: "bishop", side: "black", file: 5, rank: 3 }),
+    piece({ id: "b", kind: "pawn", side: "black", file: 6, rank: 2, moved: true }),
+    piece({ id: "bb", kind: "bishop", side: "black", file: 6, rank: 3 }),
+  ]);
+  const frames = playTurn(state, 3, 1, () => 0);
+  assert.ok(frames);
+  assert.equal(frames[0]!.pieces.filter((p) => p.kind === "pawn").length, 2);
+  const last = frames[frames.length - 1]!;
+  const pawns = last.pieces.filter((p) => p.kind === "pawn");
+  assert.equal(pawns.length, 3);
+  const baby = pawns.find((p) => p.id !== "a" && p.id !== "b");
+  assert.ok(baby);
+  assert.equal(baby.rank, 1);
+  assert.notEqual(baby.file, 5);
+  assert.notEqual(baby.file, 6);
+  assert.equal(at(last, "a").rank, 2);
+  assert.equal(at(last, "b").rank, 2);
 });
 
 test("play is ignored once a pawn has reached rank 8", () => {

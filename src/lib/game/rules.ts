@@ -280,7 +280,7 @@ function stepPawn(pieces: Piece[], id: string, seq: number): PawnStep {
   };
 }
 
-/** One pawn steps, leftmost first. A pawn that reaches rank 8 ends the run. */
+/** Every free pawn steps, file order. Rank 8 ends the run before later pawns act. */
 export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[] {
   let pieces = clonePieces(state.pieces);
   let seq = state.seq;
@@ -311,7 +311,6 @@ export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[
       }),
     );
     if (over) return frames;
-    break;
   }
 
   const pawns = pieces.filter((p) => p.kind === "pawn");
@@ -340,10 +339,7 @@ export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[
   return frames;
 }
 
-/**
- * Apply one player landing, then let one pawn step. A pawn just spawned on
- * rank 2 can be that pawn. Returns animation frames, or null if the tap is illegal.
- */
+/** Apply one landing, then let every pawn step. Null if the tap is illegal. */
 export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng = Math.random): Snapshot[] | null {
   if (state.status !== "play") return null;
   const player = playerOf(state.pieces);
@@ -370,10 +366,13 @@ export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng =
     pop = { file, rank, text: `+${gained}`, key: seq };
     shake = 0.48;
     cue = "score";
-    const born = spawnPawn(pieces, seq, rng);
-    if (born) {
-      pieces = born.pieces;
-      seq = born.seq;
+    const before = pieces.filter((p) => p.kind === "pawn").length + 1;
+    if (before <= 2) {
+      const born = spawnPawn(pieces, seq, rng);
+      if (born) {
+        pieces = born.pieces;
+        seq = born.seq;
+      }
     }
     const formed = tickForm(kind, formLeft);
     kind = formed.kind;
