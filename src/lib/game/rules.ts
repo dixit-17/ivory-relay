@@ -339,7 +339,7 @@ export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[
   return frames;
 }
 
-/** Apply one landing, then let every pawn step. Null if the tap is illegal. */
+/** Apply one landing. Pawns step afterwards, unless an officer was taken. */
 export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng = Math.random): Snapshot[] | null {
   if (state.status !== "play") return null;
   const player = playerOf(state.pieces);
@@ -415,6 +415,8 @@ export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng =
     pop,
     cue,
   });
+
+  if (captured && captured.kind !== "pawn") return [afterPlayer];
 
   const pawnFrames = advancePawns(afterPlayer, rng);
   return [afterPlayer, ...pawnFrames];

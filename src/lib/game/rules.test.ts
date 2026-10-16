@@ -167,6 +167,21 @@ test("eating a rook becomes a rook for three moves and replaces an officer", () 
   assert.notEqual(spawned.file === 2 && spawned.rank === 2, true);
 });
 
+test("capturing an officer freezes the pawns so the player moves again", () => {
+  const state = hand([
+    player("knight", 1, 0),
+    piece({ id: "meal", kind: "bishop", side: "black", file: 2, rank: 2 }),
+    piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 1 }),
+  ]);
+  const frames = playTurn(state, 2, 2, () => 0);
+  assert.ok(frames);
+  assert.equal(frames.length, 1);
+  assert.equal(at(frames[0]!, "p").file, 4);
+  assert.equal(at(frames[0]!, "p").rank, 1);
+  assert.equal(at(frames[0]!, "player").kind, "bishop");
+  assert.equal(frames[0]!.formLeft, 3);
+});
+
 test("a rook or bishop form lasts three player moves, then the knight returns", () => {
   let state = hand([player("rook", 0, 0)], { formLeft: 3 });
   const steps: [number, number][] = [
