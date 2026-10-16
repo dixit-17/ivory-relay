@@ -105,6 +105,35 @@ function pick<T>(items: readonly T[], rng: Rng): T {
   return items[index]!;
 }
 
+function openPawnFiles(pieces: readonly Piece[]): Square[] {
+  const files = new Set(pieces.filter((p) => p.kind === "pawn").map((p) => p.file));
+  return emptySquares(pieces, 1).filter((square) => !files.has(square.file));
+}
+
+function spawnPawn(
+  pieces: Piece[],
+  seq: number,
+  rng: Rng,
+): { pieces: Piece[]; seq: number; id: string } | null {
+  const spots = openPawnFiles(pieces);
+  if (spots.length === 0) return null;
+  const spot = pick(spots, rng);
+  const id = `p${seq++}`;
+  return {
+    seq,
+    id,
+    pieces: [
+      ...pieces,
+      { id, kind: "pawn", side: "black", file: spot.file, rank: spot.rank, moved: false },
+    ],
+  };
+}
+
+function pawnBlocked(pieces: readonly Piece[], pawn: Piece): boolean {
+  const rank = pawn.rank + 1;
+  return onBoard(pawn.file, rank) && Boolean(pieceAt(pieces, pawn.file, rank));
+}
+
 function emptySquares(pieces: readonly Piece[], onlyRank?: number): Square[] {
   const taken = new Set(pieces.map((p) => `${p.file},${p.rank}`));
   const out: Square[] = [];
@@ -251,8 +280,8 @@ function stepPawn(pieces: Piece[], id: string, seq: number): PawnStep {
   };
 }
 
-/** Both pawns act, file order. A pawn that reaches rank 8 ends the run immediately. */
-export function advancePawns(state: Snapshot, _rng: Rng = Math.random): Snapshot[] {
+/** One pawn steps, leftmost first. A pawn that reaches rank 8 ends the run. */
+export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[] {
   let pieces = clonePieces(state.pieces);
   let seq = state.seq;
   const order = pieces
@@ -264,9 +293,9 @@ export function advancePawns(state: Snapshot, _rng: Rng = Math.random): Snapshot
   for (const id of order) {
     if (!pieces.some((p) => p.id === id)) continue;
     const step = stepPawn(pieces, id, seq);
+    if (!step.changed) continue;
     pieces = step.pieces;
     seq = step.seq;
-    if (!step.changed) continue;
     const over = step.reached;
     frames.push(
       freeze({
@@ -281,14 +310,39 @@ export function advancePawns(state: Snapshot, _rng: Rng = Math.random): Snapshot
         cue: over ? "over" : step.ate ? "eat" : "pawn",
       }),
     );
-    if (over) break;
+    if (over) return frames;
+    break;
+  }
+
+  const pawns = pieces.filter((p) => p.kind === "pawn");
+  const stuck = pawns.filter((pawn) => pawnBlocked(pieces, pawn));
+  if (stuck.length >= 2 && pawns.length < 8) {
+    const born = spawnPawn(pieces, seq, rng);
+    if (born) {
+      pieces = born.pieces;
+      seq = born.seq;
+      const baby = pieces.find((p) => p.id === born.id)!;
+      frames.push(
+        freeze({
+          pieces,
+          score: state.score,
+          formLeft: state.formLeft,
+          status: "play",
+          seq,
+          shake: 0.16,
+          mark: { file: baby.file, rank: baby.rank },
+          pulseId: baby.id,
+          cue: "pawn",
+        }),
+      );
+    }
   }
   return frames;
 }
 
 /**
- * Apply one player landing, then let every pawn act — including a pawn just
- * spawned on rank 2. Returns animation frames, or null if the tap is illegal.
+ * Apply one player landing, then let one pawn step. A pawn just spawned on
+ * rank 2 can be that pawn. Returns animation frames, or null if the tap is illegal.
  */
 export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng = Math.random): Snapshot[] | null {
   if (state.status !== "play") return null;
@@ -316,18 +370,11 @@ export function playTurn(state: Snapshot, file: number, rank: number, rng: Rng =
     pop = { file, rank, text: `+${gained}`, key: seq };
     shake = 0.48;
     cue = "score";
-    const spot = pick(emptySquares(pieces, 1), rng);
-    pieces = [
-      ...pieces,
-      {
-        id: `p${seq++}`,
-        kind: "pawn",
-        side: "black",
-        file: spot.file,
-        rank: spot.rank,
-        moved: false,
-      },
-    ];
+    const born = spawnPawn(pieces, seq, rng);
+    if (born) {
+      pieces = born.pieces;
+      seq = born.seq;
+    }
     const formed = tickForm(kind, formLeft);
     kind = formed.kind;
     formLeft = formed.formLeft;
