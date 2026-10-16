@@ -213,15 +213,6 @@ function freeze(state: Snapshot): Snapshot {
   };
 }
 
-function canStraight(pieces: readonly Piece[], pawn: Piece, dist: number): boolean {
-  for (let step = 1; step <= dist; step++) {
-    const rank = pawn.rank + step;
-    if (!onBoard(pawn.file, rank)) return false;
-    if (pieceAt(pieces, pawn.file, rank)) return false;
-  }
-  return true;
-}
-
 interface PawnStep {
   pieces: Piece[];
   seq: number;
@@ -232,7 +223,7 @@ interface PawnStep {
   reached: boolean;
 }
 
-function stepPawn(pieces: Piece[], id: string, seq: number, rng: Rng): PawnStep {
+function stepPawn(pieces: Piece[], id: string, seq: number): PawnStep {
   const pawn = pieces.find((p) => p.id === id);
   const idle: PawnStep = {
     pieces,
@@ -245,84 +236,23 @@ function stepPawn(pieces: Piece[], id: string, seq: number, rng: Rng): PawnStep 
   };
   if (!pawn || pawn.kind !== "pawn") return idle;
 
-  const dist = pawn.moved ? 1 : rng() < 0.5 ? 1 : 2;
-  if (canStraight(pieces, pawn, dist)) {
-    const rank = pawn.rank + dist;
-    const next = pieces.map((p) => (p.id === id ? { ...p, rank, moved: true } : p));
-    return {
-      pieces: next,
-      seq,
-      changed: true,
-      ate: false,
-      mark: { file: pawn.file, rank },
-      pawnId: id,
-      reached: rank === 7,
-    };
-  }
+  const rank = pawn.rank + 1;
+  if (!onBoard(pawn.file, rank) || pieceAt(pieces, pawn.file, rank)) return idle;
 
-  const diags: Square[] = [
-    { file: pawn.file - 1, rank: pawn.rank + 1 },
-    { file: pawn.file + 1, rank: pawn.rank + 1 },
-  ];
-  const on = diags.filter((s) => onBoard(s.file, s.rank));
-  const empties = on.filter((s) => !pieceAt(pieces, s.file, s.rank));
-  if (empties.length > 0) {
-    const dest = empties.length === 1 ? empties[0]! : pick(empties, rng);
-    const next = pieces.map((p) =>
-      p.id === id ? { ...p, file: dest.file, rank: dest.rank, moved: true } : p,
-    );
-    return {
-      pieces: next,
-      seq,
-      changed: true,
-      ate: false,
-      mark: dest,
-      pawnId: id,
-      reached: dest.rank === 7,
-    };
-  }
-
-  const bothBlocked = on.length === 2 && on.every((s) => pieceAt(pieces, s.file, s.rank));
-  if (bothBlocked) {
-    const edible = on
-      .map((s) => ({ s, p: pieceAt(pieces, s.file, s.rank)! }))
-      .filter((x) => x.p.side !== "white");
-    if (edible.length > 0) {
-      const choice = edible.length === 1 ? edible[0]! : pick(edible, rng);
-      let next = pieces.filter((p) => p.id !== choice.p.id);
-      next = next.map((p) =>
-        p.id === id ? { ...p, file: choice.s.file, rank: choice.s.rank, moved: true } : p,
-      );
-      const kind = pick(OFFICERS, rng);
-      const spot = pick(emptySquares(next), rng);
-      next = [
-        ...next,
-        {
-          id: `o${seq++}`,
-          kind,
-          side: "black" as const,
-          file: spot.file,
-          rank: spot.rank,
-          moved: false,
-        },
-      ];
-      return {
-        pieces: next,
-        seq,
-        changed: true,
-        ate: true,
-        mark: choice.s,
-        pawnId: id,
-        reached: choice.s.rank === 7,
-      };
-    }
-  }
-
-  return idle;
+  const next = pieces.map((p) => (p.id === id ? { ...p, rank, moved: true } : p));
+  return {
+    pieces: next,
+    seq,
+    changed: true,
+    ate: false,
+    mark: { file: pawn.file, rank },
+    pawnId: id,
+    reached: rank === 7,
+  };
 }
 
 /** Both pawns act, file order. A pawn that reaches rank 8 ends the run immediately. */
-export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[] {
+export function advancePawns(state: Snapshot, _rng: Rng = Math.random): Snapshot[] {
   let pieces = clonePieces(state.pieces);
   let seq = state.seq;
   const order = pieces
@@ -333,7 +263,7 @@ export function advancePawns(state: Snapshot, rng: Rng = Math.random): Snapshot[
   const frames: Snapshot[] = [];
   for (const id of order) {
     if (!pieces.some((p) => p.id === id)) continue;
-    const step = stepPawn(pieces, id, seq, rng);
+    const step = stepPawn(pieces, id, seq);
     pieces = step.pieces;
     seq = step.seq;
     if (!step.changed) continue;

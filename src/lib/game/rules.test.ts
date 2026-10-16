@@ -206,56 +206,45 @@ test("capturing a knight clears the timer", () => {
   assert.equal(frames?.[0]?.formLeft, null);
 });
 
-test("a pawn's first step is one or two, and later steps are one", () => {
-  const two = hand([
+test("a pawn always steps one square, never two", () => {
+  const start = hand([
     player("knight", 7, 0),
     piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 1 }),
   ]);
-  const long = advancePawns(two, () => 0.9);
-  assert.equal(at(long[0]!, "p").rank, 3);
-  assert.equal(at(long[0]!, "p").moved, true);
-
-  const one = advancePawns(two, () => 0);
-  assert.equal(at(one[0]!, "p").rank, 2);
+  const first = advancePawns(start, () => 0.9);
+  assert.equal(at(first[0]!, "p").rank, 2);
+  assert.equal(at(first[0]!, "p").file, 4);
+  assert.equal(at(first[0]!, "p").moved, true);
 
   const later = hand([
     player("knight", 7, 0),
-    piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 1, moved: true }),
+    piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 2, moved: true }),
   ]);
   const stepped = advancePawns(later, boom);
-  assert.equal(at(stepped[0]!, "p").rank, 2);
+  assert.equal(at(stepped[0]!, "p").rank, 3);
+  assert.equal(at(stepped[0]!, "p").file, 4);
 });
 
-test("a two-step does not jump a blocker and sidesteps instead", () => {
+test("a blocked pawn stays, even when a forward diagonal is empty", () => {
   const state = hand([
     player("knight", 7, 0),
     piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 1 }),
     piece({ id: "block", kind: "knight", side: "black", file: 4, rank: 2 }),
   ]);
-  let call = 0;
-  const rng: Rng = () => {
-    call += 1;
-    return call === 1 ? 0.9 : 0;
-  };
-  const frames = advancePawns(state, rng);
-  const pawn = at(frames[0]!, "p");
-  assert.equal(pawn.file, 3);
-  assert.equal(pawn.rank, 2);
-});
+  assert.equal(advancePawns(state, boom).length, 0);
+  assert.equal(at(state, "p").file, 4);
+  assert.equal(at(state, "p").rank, 1);
 
-test("a blocked pawn sidesteps onto an empty forward diagonal", () => {
-  const state = hand([
+  const clear = hand([
     player("knight", 7, 0),
-    piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 3, moved: true }),
-    piece({ id: "block", kind: "rook", side: "black", file: 4, rank: 4 }),
-    piece({ id: "left", kind: "knight", side: "black", file: 3, rank: 4 }),
+    piece({ id: "p", kind: "pawn", side: "black", file: 4, rank: 1 }),
   ]);
-  const frames = advancePawns(state, boom);
-  assert.equal(at(frames[0]!, "p").file, 5);
-  assert.equal(at(frames[0]!, "p").rank, 4);
+  const frames = advancePawns(clear, boom);
+  assert.equal(at(frames[0]!, "p").file, 4);
+  assert.equal(at(frames[0]!, "p").rank, 2);
 });
 
-test("if both forward diagonals are blocked, the pawn eats one and an officer spawns", () => {
+test("a pawn does not step or eat diagonally", () => {
   const state = hand([
     player("knight", 7, 0),
     piece({ id: "p", kind: "pawn", side: "black", file: 3, rank: 3, moved: true }),
@@ -264,47 +253,23 @@ test("if both forward diagonals are blocked, the pawn eats one and an officer sp
     piece({ id: "right", kind: "knight", side: "black", file: 4, rank: 4 }),
   ]);
   const frames = advancePawns(state, () => 0);
-  const next = frames[0]!;
-  assert.equal(next.pieces.some((p) => p.id === "left"), false);
-  assert.equal(at(next, "p").file, 2);
-  assert.equal(at(next, "p").rank, 4);
-  assert.equal(next.pieces.some((p) => p.id === "right"), true);
-  const bishops = next.pieces.filter((p) => p.kind === "bishop");
-  assert.equal(bishops.length, 1);
-  const squares = new Set(next.pieces.map((p) => `${p.file},${p.rank}`));
-  assert.equal(squares.size, next.pieces.length);
+  assert.equal(frames.length, 0);
+  assert.equal(at(state, "p").file, 3);
+  assert.equal(at(state, "p").rank, 3);
+  assert.equal(state.pieces.some((p) => p.id === "left"), true);
+  assert.equal(state.pieces.some((p) => p.id === "right"), true);
+  assert.equal(state.pieces.filter((p) => p.kind === "bishop").length, 0);
 });
 
-test("a pawn never eats the player", () => {
-  const sidestep = hand([
-    player("knight", 0, 4),
-    piece({ id: "p", kind: "pawn", side: "black", file: 1, rank: 3, moved: true }),
-    piece({ id: "block", kind: "rook", side: "black", file: 1, rank: 4 }),
-  ]);
-  const sideFrames = advancePawns(sidestep, boom);
-  assert.equal(at(sideFrames[0]!, "p").file, 2);
-  assert.equal(at(sideFrames[0]!, "player").file, 0);
-
-  const eatOther = hand([
-    player("knight", 0, 4),
-    piece({ id: "p", kind: "pawn", side: "black", file: 1, rank: 3, moved: true }),
-    piece({ id: "block", kind: "rook", side: "black", file: 1, rank: 4 }),
-    piece({ id: "right", kind: "knight", side: "black", file: 2, rank: 4 }),
-  ]);
-  const eatFrames = advancePawns(eatOther, () => 0);
-  assert.ok(eatFrames[0]!.pieces.some((p) => p.id === "player"));
-  assert.equal(eatFrames[0]!.pieces.some((p) => p.id === "right"), false);
-  assert.equal(at(eatFrames[0]!, "p").file, 2);
-
-  const stay = hand([
+test("a pawn never moves onto the player", () => {
+  const state = hand([
     player("knight", 1, 4),
-    piece({ id: "p", kind: "pawn", side: "black", file: 0, rank: 3, moved: true }),
-    piece({ id: "block", kind: "rook", side: "black", file: 0, rank: 4 }),
+    piece({ id: "p", kind: "pawn", side: "black", file: 1, rank: 3, moved: true }),
   ]);
-  const stayed = advancePawns(stay, boom);
-  assert.equal(stayed.length, 0);
-  assert.equal(at(stay, "p").rank, 3);
-  assert.equal(at(stay, "player").rank, 4);
+  assert.equal(advancePawns(state, boom).length, 0);
+  assert.equal(at(state, "p").file, 1);
+  assert.equal(at(state, "p").rank, 3);
+  assert.equal(at(state, "player").rank, 4);
 });
 
 test("a pawn with no step stays", () => {
@@ -348,7 +313,7 @@ test("after a player move both pawns act, newborn included", () => {
   const pawn = final.pieces.find((p) => p.kind === "pawn");
   assert.ok(pawn);
   assert.equal(pawn.rank, 2);
-  assert.ok(n >= 2);
+  assert.ok(n >= 1);
 });
 
 test("play is ignored once a pawn has reached rank 8", () => {
